@@ -2,35 +2,102 @@ import streamlit as st
 import joblib
 import pandas as pd
 import numpy as np
+from datetime import datetime, timedelta
 
-# Load the saved model
-model = joblib.load('best_model.pkl')
+# Load the saved models (ensure they are in the same directory as this script)
+holt_winters_model = joblib.load('holt_winters_model.pkl')  # Holt-Winters model
+xgboost_model = joblib.load('xgboost_model.pkl')  # XGBoost model
+linear_model = joblib.load('linear_model.pkl')  # Linear Regression model
 
-# Function to make predictions
-def predict_order(input_data):
-    # Make predictions using the trained model
-    forecast = model.predict(input_data)
-    return forecast
+# Set Streamlit page configuration
+st.set_page_config(
+    page_title="Demand Prediction App",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-# Title of the app
-st.title("Inventory Demand Prediction")
+# Title and Description
+st.title("📦 Inventory Demand Prediction App")
+st.markdown("""
+This app predicts inventory demand for **Tenderstem**, **Babycorn**, and **Finebeans**. 
+The predictions are based on advanced forecasting models, including:
+- Holt-Winters Exponential Smoothing
+- XGBoost
+- Linear Regression
 
-# User input
-st.header("Enter the Date and Product Information")
+You can provide historical data and select a future date to get demand predictions.
+""")
 
-date_input = st.date_input("Select the Date", value=pd.to_datetime('2025-02-17'))
-product = st.selectbox("Select Product", ['Tenderstem', 'babycorn', 'finebeans'])
+# Sidebar for Input
+st.sidebar.header("🛠️ User Input")
 
-# Simulate features (use actual feature extraction in production)
-# Here we will just simulate lag values for the sake of example
-lag_1 = st.number_input(f"Enter lag for {product} (1 day)", value=100, min_value=0)
-lag_7 = st.number_input(f"Enter lag for {product} (7 days)", value=120, min_value=0)
-rolling_mean_7 = st.number_input(f"Enter rolling mean for {product} (7 days)", value=110, min_value=0)
+# Date Input
+selected_date = st.sidebar.date_input(
+    "Select the Date for Prediction",
+    min_value=datetime.today(),
+    max_value=datetime.today() + timedelta(days=90),  # Limit to 3 months ahead
+)
 
-# Prepare the input data in the same format the model expects
-input_data = np.array([[lag_1, lag_7, rolling_mean_7]])
+# Product Dropdown
+selected_product = st.sidebar.selectbox(
+    "Select Product",
+    ["Tenderstem", "babycorn", "finebeans"],
+)
 
-# Predict and display the result
-if st.button("Predict"):
-    prediction = predict_order(input_data)
-    st.write(f"The predicted demand for {product} on {date_input} is: {prediction[0]:.2f} units")
+# Lag and Rolling Features Input
+st.sidebar.markdown("### Historical Data")
+lag_1 = st.sidebar.number_input(f"Enter Lag-1 Demand for {selected_product}", value=300, step=10)
+lag_7 = st.sidebar.number_input(f"Enter Lag-7 Demand for {selected_product}", value=280, step=10)
+rolling_mean_7 = st.sidebar.number_input(f"Enter Rolling Mean for Last 7 Days for {selected_product}", value=290, step=10)
+
+# Convert inputs into a DataFrame for predictions
+input_features = pd.DataFrame(
+    {
+        "lag_1": [lag_1],
+        "lag_7": [lag_7],
+        "rolling_mean_7": [rolling_mean_7],
+    }
+)
+
+# Button to Trigger Prediction
+if st.sidebar.button("🔮 Predict"):
+    # Predictions from each model
+    st.header(f"📈 Predictions for {selected_product} on {selected_date.strftime('%A, %d %B %Y')}")
+    
+    # Holt-Winters Prediction
+    hw_forecast = holt_winters_model.forecast(steps=1)
+    st.markdown(f"**Holt-Winters Forecast:** {hw_forecast[0]:.2f} units")
+    
+    # XGBoost Prediction
+    xgb_forecast = xgboost_model.predict(input_features)
+    st.markdown(f"**XGBoost Forecast:** {xgb_forecast[0]:.2f} units")
+    
+    # Linear Regression Prediction
+    linear_forecast = linear_model.predict(input_features)
+    st.markdown(f"**Linear Regression Forecast:** {linear_forecast[0]:.2f} units")
+    
+    # Average Prediction
+    final_forecast = (hw_forecast[0] + xgb_forecast[0] + linear_forecast[0]) / 3
+    st.subheader(f"📊 Final Predicted Demand: {final_forecast:.2f} units")
+
+# Visualization Section
+st.markdown("---")
+st.header("📊 Historical Data and Trends")
+st.markdown("Visualize past demand trends to better understand seasonality and patterns.")
+
+# Simulate some historical data for plotting
+dates = pd.date_range(start='2025-01-01', periods=90, freq='D')
+historical_demand = np.random.randint(150, 500, size=len(dates))
+
+historical_data = pd.DataFrame({
+    "Date": dates,
+    "Demand": historical_demand
+})
+historical_data.set_index("Date", inplace=True)
+
+# Line Chart for Historical Data
+st.line_chart(historical_data["Demand"])
+
+# Footer
+st.markdown("---")
+st.markdown("© 2025 Demand Prediction App. Powered by Streamlit.")
